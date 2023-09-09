@@ -9,7 +9,8 @@ I would measure the outcome using....our Multiple logistic model?
 """"
 
 #Section 2: Data Meaning Type
-""""Input variables:
+""""
+Input variables:
    # bank client data:
    1 - age (numeric)
    2 - job : type of job (categorical: "admin.","unknown","unemployed","management","housemaid","entrepreneur","student",
