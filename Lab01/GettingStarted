@@ -1,0 +1,37 @@
+import pandas as pd
+
+#Section 1: Business Understanding
+""""
+The purpose of our data is to predict if the client will subscribe a term deposit.
+The Data was collected using the marketing campaign of a Portugese banking institution.
+I would define the outcome of our data as successfully predicting whether a client will subscribe to a term deposit.
+I would measure the outcome using....our Multiple logistic model?
+""""
+
+#Section 2: Data Meaning Type
+""""
+
+""""
+
+# Choose File
+RawBank = "https://raw.githubusercontent.com/NickSager/DS7331_Projects/main/Lab01/data/bank-additional-full.csv"
+
+# Read the CSV file with a semicolon ; separator
+bank = pd.read_csv(RawBank, sep=';')
+
+# Get info on the dataset
+BankDesc = df.describe(bank)
+
+
+#Section 3: Data Quality
+""""
+
+""""
+
+#Section 4: Simple Statistics
+""""
+
+""""
+
+#Stats on the data
+BankStats = df.info(bank)
