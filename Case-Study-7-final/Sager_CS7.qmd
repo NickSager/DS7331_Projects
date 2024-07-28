@@ -41,9 +41,6 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
 )
-
-import tensorflow as tf
-from tensorflow.keras.callbacks import TensorBoard, EarlyStopping
 ```
 Don't ensemble
 must use CV
@@ -52,39 +49,39 @@ EDA, missing data, different thresholds
 custom function for monetary loss?
 
 ## Introduction
-The goal of this Case Study is to predict whether a given reading from a high-energy particle accelerator is a legitimate signal or background. The data has been generated from Monte Carlo simulations, but has been used by physicists to test machine learning methods for detecting the creation of exotic particles from collisions.
+The goal of this Case Study is to predict the class of a variable that we don't know anything about. The data is anonymized and we are not concerned with explaining the predictions. False positives of class '1' incur a cost of $100. False positives of class '0' incur a cost of $25. Given these, our goal is to develop a model that minimizes financial loss.
 
 ## Data Processing and Exploration
 ```{python}
-directory = "./Case-Study-6/data" if os.path.exists("./Case-Study-6/data") else "./data"
-data = pd.read_csv(f"{directory}/all_train.csv")
-data = data.rename(columns={"# label": "label"})
+directory = "./Case-Study-7-final/data" if os.path.exists("./Case-Study-7-final/data") else "./data"
+data = pd.read_csv(f"{directory}/final_project(5).csv")
 
 print(data)
 print(data.dtypes)
 ```
-The data contains 7,000,000 records containing 28 features and the target variable, a binary label of whether the process is one that creates a Higgs Boson. The first 21 features are kinematic properties measured by the particle detectors in the accelerator, while the last 7 features are high-level features derived by physicists to help with classification. All are unlabeled except for the 'mass' column.
+The data contains 160,000 records containing 50 features and the target variable, a binary label of '1' or '0'. Most features are numeric, but three features are text. These include what appear to be continent, month, day of the week, a percentage change, and a price change stored as a string. We will convert the percentage change and price change to numeric values to be included in our model.
 
 ### Summary Statistics
 
-Our dataset has two classes, signal and background. They are labelled '1.0' and '0.0' and are split almost evenly. There are approximately 3.5M records labelled 'signal' and 3.5M records labelled 'background'.
+Our dataset has two classes. They are labelled '1.0' and '0.0' and are split relatively evenly. There are approximately 95,000 records labelled '0' and 64,000 records labelled '1'.
 
 ```{python}
 # | label: fig-target-dist
-# | fig-cap: "Distribution of Target Variable (Label). The classes are evenly distributed."
-# print(data["label"].value_counts())
+# | fig-cap: "Distribution of Target Variable (y)."
+# print(data["y"].value_counts())
 
 sns.set_theme(style="whitegrid")
 
 # Plot the distribution of target variable (category)
 # plt.figure(figsize=(8, 6))
-sns.countplot(x="label", data=data, palette="viridis")
+sns.countplot(x="y", data=data, palette="viridis")
 plt.title("Distribution of Target Variable")
-plt.xlabel("Record Classification (signal or background)")
+plt.xlabel("Record Classification")
 plt.ylabel("Count")
 plt.show()
 ```
 
+# TODO: Continue work here
 The mass variable appears to be uniformly distributed as shown in the histogram below. This is expected since the mass is a derived variable and the data is from repeated simulations.
 
 ```{python}
