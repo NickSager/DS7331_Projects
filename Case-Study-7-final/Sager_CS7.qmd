@@ -92,7 +92,7 @@ The 'x24' variable appears to represent continents. Asia is the most common cont
 ```{python}
 # | label: fig-x24-dist
 # | fig-cap: "Distribution of Continent Variable. Asia is the most common."
-print(data["x24"].value_counts())
+# print(data["x24"].value_counts())
 
 sorted_data = data['x24'].value_counts().index
 
@@ -127,11 +127,41 @@ data['x29'] = data['x29'].replace(month_mapping)
 ```{python}
 # | label: fig-x29-dist
 # | fig-cap: "Distribution of Month Variable. The majority of records are for summer months."
+# print(data["x29"].value_counts())
 month_order = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 # plt.figure(figsize=(8, 6))
 sns.countplot(x="x29", data=data, order=month_order, palette="viridis")
 plt.title("Count Plot of x29 (Month)")
+plt.xlabel("Category")
+plt.ylabel("Count")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.show()
+```
+
+The 'x30' variable appears to represent the day of the week. The majority of records are in the middle of the work week with Tuesday, Wednesday, and Thursday having the most records. Monday and Friday have fewer records. Again, the spellings are irregular so these are mapped to the full day names for clarity.
+
+```{python}
+day_mapping = {
+  "monday": "Monday",
+  "tuesday": "Tuesday",
+  "wednesday": "Wednesday",
+  "thurday": "Thursday",
+  "friday": "Friday",
+}
+
+data['x30'] = data['x30'].replace(day_mapping)
+```
+```{python}
+# | label: fig-x30-dist
+# | fig-cap: "Distribution of Day Variable. Most records are in the middle of the work week."
+print(data["x30"].value_counts())
+day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+
+# plt.figure(figsize=(8, 6))
+sns.countplot(x="x30", data=data, order=day_order, palette="viridis")
+plt.title("Count Plot of x30 (Day)")
 plt.xlabel("Category")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
