@@ -156,12 +156,35 @@ data['x30'] = data['x30'].replace(day_mapping)
 ```{python}
 # | label: fig-x30-dist
 # | fig-cap: "Distribution of Day Variable. Most records are in the middle of the work week."
-print(data["x30"].value_counts())
+# print(data["x30"].value_counts())
 day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
 # plt.figure(figsize=(8, 6))
 sns.countplot(x="x30", data=data, order=day_order, palette="viridis")
 plt.title("Count Plot of x30 (Day)")
+plt.xlabel("Category")
+plt.ylabel("Count")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.show()
+```
+
+The 'x32' variable appears to represent a percentage change. The distribution of this variable is shown below. Most records tend toward smaller absolute values of changes, with the most common changes being 0.0%, and 0.01%. We have chosen to keep this feature as a categorical variable for now, but we could consider converting it to a numeric variable in the future. There are relatively few categories and they are nicely rounded so it's doubtful that the model would benefit from the increased complexity of a continuous variable for this feature. The 0.0% category was originally counted as separate from -0.0%. We have combined them for simplicity since they are the same.
+
+```{python}
+data['x32'] = data['x32'].replace('-0.0%', '0.0%')
+# print(data['x32'].value_counts())
+```
+
+```{python}
+# | label: fig-x32-dist
+# | fig-cap: "Distribution of Percentage Change Variable. Most records tend toward smaller changes."
+# print(data["x32"].value_counts())
+change_order = ['-0.05%', '-0.04%', '-0.03%', '-0.02%', '-0.01%', '0.0%', '0.01%', '0.02%', '0.03%', '0.04%', '0.05%']
+
+# plt.figure(figsize=(8, 6))
+sns.countplot(x="x32", data=data, order=change_order, palette="viridis")
+plt.title("Count Plot of x32 (Percentage Change)")
 plt.xlabel("Category")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
