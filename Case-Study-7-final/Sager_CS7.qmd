@@ -199,7 +199,7 @@ data['x37'] = data['x37'].replace('[\$,]', '', regex=True).astype(float)
 ```
 ```{python}
 # | label: fig-x37-dist
-# fig-cap: "Distribution of Monetary variable. Records show a normal distribution ranging from -4000 to 4000.
+# | fig-cap: "Distribution of Monetary variable. Records show a normal distribution ranging from -4000 to 4000.
 #Histogtam
 plt.figure(figsize=(10, 6))
 sns.histplot(data['x37'], bins=30, kde=True)
