@@ -47,6 +47,10 @@ must use CV
 Use advanced methods
 EDA, missing data, different thresholds
 custom function for monetary loss?
+XGB, NN, SVM? - all with CV, only a few minutes
+$17 false positive (1 class), $5 false negative
+calculate loss per sample - whole dataset
+fairly high accuracy - above 90%
 
 ## Introduction
 The goal of this Case Study is to predict the class of a variable that we don't know anything about. The data is anonymized and we are not concerned with explaining the predictions. False positives of class '1' incur a cost of $100. False positives of class '0' incur a cost of $25. Given these, our goal is to develop a model that minimizes financial loss.
@@ -81,22 +85,61 @@ plt.ylabel("Count")
 plt.show()
 ```
 
-# TODO: Continue work here
-The mass variable appears to be uniformly distributed as shown in the histogram below. This is expected since the mass is a derived variable and the data is from repeated simulations.
+We will explore some of the features to gain intuition on the dataset. Starting with the categorical variables:
+
+The 'x24' variable appears to represent continents. Asia is the most common continent in the dataset with approximately 140,000 records. The other continents have fewer records, with America having the fewest at around 5,000 records and Europe splitting the difference.
 
 ```{python}
-# | label: fig-mass-dist
-# | fig-cap: "Distribution of Mass Variable. Mass appears to be uniformly distributed."
+# | label: fig-x24-dist
+# | fig-cap: "Distribution of Continent Variable. Asia is the most common."
+print(data["x24"].value_counts())
+
+sorted_data = data['x24'].value_counts().index
 
 # plt.figure(figsize=(8, 6))
-# sns.histplot(data["mass"], bins=5, kde=False, edgecolor="black")
-plt.hist(data['mass'], bins=5, edgecolor='black')
-plt.title("Histogram of Mass")
-plt.xlabel("Mass")
-plt.ylabel("Frequency")
+sns.countplot(x="x24", data=data, order=sorted_data, palette="viridis")
+plt.title("Count Plot of x24 (Continent)")
+plt.xlabel("Category")
+plt.ylabel("Count")
 plt.show()
 ```
 
+The 'x29' variable appears to represent months. The majority of records are for summer months, with July and June having the most records. December has the fewest records. Many of the month labels in the dataset are irregular or misspelled so these are mapped to the full month names for clarity.
+
+```{python}
+month_mapping = {
+    'July': 'July',
+    'Jun': 'June',
+    'Aug': 'August',
+    'May': 'May',
+    'sept.': 'September',
+    'Apr': 'April',
+    'Oct': 'October',
+    'Mar': 'March',
+    'Nov': 'November',
+    'Feb': 'February',
+    'Dev': 'December',
+    'January': 'January'
+}
+
+data['x29'] = data['x29'].replace(month_mapping)
+```
+```{python}
+# | label: fig-x29-dist
+# | fig-cap: "Distribution of Month Variable. The majority of records are for summer months."
+month_order = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+# plt.figure(figsize=(8, 6))
+sns.countplot(x="x29", data=data, order=month_order, palette="viridis")
+plt.title("Count Plot of x29 (Month)")
+plt.xlabel("Category")
+plt.ylabel("Count")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.show()
+```
+
+# TODO: Continue work here
 To better understand the distribution of the other features, we can plot a histogram of the 'f4' variable. The 'f4' variable appears to be also uniformly distributed. We could also plot histograms of other features, but for brevity, we will only show the distribution of 'f4'.
 
 ```{python}
