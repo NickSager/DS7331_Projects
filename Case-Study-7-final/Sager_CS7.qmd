@@ -192,6 +192,22 @@ plt.tight_layout()
 plt.show()
 ```
 
+'x37' value represents monetary values. The distribution is shown below of the values. The distribution centers around $0 with a normal distribution ranging from $-4000 to $4000. We have choosen to convert this to a float value.
+
+```{python}
+data['x37'] = data['x37'].replace('[\$,]', '', regex=True).astype(float)
+```
+```{python}
+# | label: fig-x37-dist
+# fig-cap: "Distribution of Monetary variable. Records show a normal distribution ranging from -4000 to 4000.
+#Histogtam
+plt.figure(figsize=(10, 6))
+sns.histplot(data['x37'], bins=30, kde=True)
+plt.title('Distribution of x37')
+plt.xlabel('x37')
+plt.ylabel('Frequency')
+```
+
 # TODO: Continue work here
 To better understand the distribution of the other features, we can plot a histogram of the 'f4' variable. The 'f4' variable appears to be also uniformly distributed. We could also plot histograms of other features, but for brevity, we will only show the distribution of 'f4'.
 
