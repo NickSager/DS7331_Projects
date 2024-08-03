@@ -303,46 +303,6 @@ for col in categorical_cols:
 print(f"Remaining missing data: {data.isnull().sum().sum()}")
 ```
 
-For the model to handle the data, preprocessing needs to occur to make the data into a injestable format. The mutli-object variables are one hot encoded to be used for the model.
-
-```(python}
-day_to_num = {
-    'Monday': 1,
-    'Tuesday': 2,
-    'Wednesday': 3,
-    'Thursday': 4,
-    'Friday': 5,
-    'Saturday': 6,
-    'Sunday': 7
-}
-# Convert the column
-data['x30'] = data['x30'].map(day_to_num)
-
-month_to_num = {
-    'July': 6,
-    'June' : 5,
-    'August' : 7,
-    'May' : 4,
-    'September' : 8,
-    'April' : 3,
-    'October' : 9,
-    'March' : 2,
-    'November' : 10,
-    'February' : 1,
-    'December' : 11,
-    'January' : 0
-}
-# Convert the column
-data['x29'] = data['x29'].map(month_to_num)
-
-country_to_num = {
-    'america' : 0, 
-    'eurpoe' : 1, 
-    'asia' : 2
-}
-#Convert the column
-data['x24'] = data['x24'].map(country_to_num)
-```
 # TODO: Continue work here
 
 ## Model Building
