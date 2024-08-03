@@ -27,6 +27,7 @@ import os
 
 from IPython.display import Markdown
 import xgboost as xgb
+import tensorflow as tf
 
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -341,6 +342,7 @@ kf = KFold(n_splits=5, shuffle=True, random_state=137)
 ### Loss Functions
 This task has very specific requirements. We need to minimize the financial loss incurred by incorrect predictions. False positives of class '1' incur a cost of $17. False negatives incur a penalty of $5. Since all of our machine learning frameworks allow us to do do, we will define a custom loss function to minimize the financial loss and train for that rather than the typically maximization of accuracy. The loss function will take the true labels and predicted probabilities as input and return the financial loss. We will create these for scikit-learn, XGBoost and TensorFlow.
 ```{python}
+# Note: These don't work for tf. probably better to min normal loss and then rune threshold
 # Scikit-learn
 def financial_loss_skl(y_true, y_pred):
     fp = ((y_true == 0) & (y_pred == 1)).sum() * 17  # False Positives
@@ -349,12 +351,16 @@ def financial_loss_skl(y_true, y_pred):
 
 financial_loss_scorer_skl = make_scorer(financial_loss_skl, greater_is_better=False)
 
-# TensorFlow
+# TensorFlow - reworked to be differentiable
 def financial_loss_tf(y_true, y_pred):
-    y_pred = tf.round(y_pred)
-    fp = tf.reduce_sum(tf.cast((y_true == 0) & (y_pred == 1), tf.float32)) * 17.0
-    fn = tf.reduce_sum(tf.cast((y_true == 1) & (y_pred == 0), tf.float32)) * 5.0
-    return fp + fn
+    # y_pred are the predicted probabilities
+    y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
+    # Cost matrix
+    fp_cost = 17.0
+    fn_cost = 5.0
+    # Calculating the cost
+    loss = y_true * (1 - y_pred) * fn_cost + (1 - y_true) * y_pred * fp_cost
+    return tf.reduce_mean(loss)
 
 # XGBoost
 def custom_objective_xgb(preds, dtrain):
@@ -367,33 +373,29 @@ def custom_objective_xgb(preds, dtrain):
     return grad, hess
 ```
 
-# TODO: Continue work here
-
 ### Dense Neural Network
-```{python}
-scaler = StandardScaler()
-y = data["label"]
-X = data.drop(["label"], axis=1)
-X = scaler.fit_transform(X)
-```
 
 The data is split into five folds for cross-validation and to compute the out-of-fold predictions. The model is trained with early stopping and dropout layers to prevent over-fitting. The out-of-fold predictions are stored for the entire dataset and used to evaluate overall performance.
 
-The Neural Network model has three hidden layers with 64, 32, and 16 units and a final output layer with a sigmoid activation function. The activation functions for the hidden layers are RELU, and Sigmoid activation is chosen for the final layer since we are doing a binary classification. The model is compiled with the Adam optimizer and binary cross-entropy loss function. The model is trained for 20 epochs with a batch size of 64. Early stopping is used to stop training when the validation loss does not improve for three consecutive epochs. Dropout layers are used with 20% dropout rate between each hidden layer to prevent over-fitting. More complicated models were explored, but quickly reach diminishing returns in performance, so the simpler model was chosen.
+The Neural Network model has three hidden layers with 256, 64, 32, and 16 units and a final output layer with a sigmoid activation function. The activation functions for the hidden layers are RELU, and Sigmoid activation is chosen for the final layer since we are doing a binary classification. The model is compiled with the Adam optimizer and binary cross-entropy loss function. The model is trained for 100 epochs with a batch size of 256. Early stopping is used to stop training when the validation loss does not improve for five consecutive epochs. Dropout layers are used with 20% dropout rate between each hidden layer to prevent over-fitting. More complicated models were explored, but quickly reach diminishing returns in performance, so the simpler model was chosen. Training and validation losses for each fold are shown below.
 
 ```{python NN with KFold Cross-Validation}
 # | output: false
 # | eval: true
 
+# Attempt to use more of computer
+tf.config.threading.set_intra_op_parallelism_threads(8)  # Set to the number of cores in your machine
+tf.config.threading.set_inter_op_parallelism_threads(2)
+
 def build_model(input_shape):
     model = tf.keras.models.Sequential([
-        # tf.keras.layers.Dense(256, activation='relu', input_shape=(input_shape,)),
-        # tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(256, activation='relu', input_shape=(input_shape,)),
+        tf.keras.layers.Dropout(0.2),
         tf.keras.layers.Dense(64, activation='relu'),
         tf.keras.layers.Dropout(0.2),
         tf.keras.layers.Dense(32, activation='relu'),
         tf.keras.layers.Dropout(0.2),
-        tf.keras.layers.Dense(10, activation='relu'),
+        tf.keras.layers.Dense(16, activation='relu'),
         tf.keras.layers.Dense(1, activation='sigmoid')
     ])
     model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
@@ -401,9 +403,6 @@ def build_model(input_shape):
 
 
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
-early_stopping = tf.keras.callbacks.EarlyStopping(
-    monitor="val_loss", patience=3, restore_best_weights=True
-)
 
 oof_preds = np.zeros(len(X))
 oof_true = np.zeros(len(X))
@@ -418,6 +417,9 @@ train_losses = []
 val_losses = []
 
 for train_index, val_index in kf.split(X):
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss", patience=5, restore_best_weights=True
+    )
     X_train, X_val = X[train_index], X[val_index]
     y_train, y_val = y[train_index], y[val_index]
 
@@ -425,8 +427,8 @@ for train_index, val_index in kf.split(X):
     history = model.fit(
         X_train,
         y_train,
-        epochs=10,
-        batch_size=64,
+        epochs=100,
+        batch_size=256,
         verbose=1,
         validation_data=(X_val, y_val),
         callbacks=[early_stopping],
@@ -450,26 +452,6 @@ for train_index, val_index in kf.split(X):
     precision_list.append(precision_score(y_val, y_pred_binary))
     recall_list.append(recall_score(y_val, y_pred_binary))
     f1_list.append(f1_score(y_val, y_pred_binary))
-
-
-# Convert from probabilities to binary predictions
-oof_preds_binary = (oof_preds > 0.5).astype(int)
-
-# Compute metrics for the entire dataset
-accuracy = accuracy_score(oof_true, oof_preds_binary)
-precision = precision_score(oof_true, oof_preds_binary)
-recall = recall_score(oof_true, oof_preds_binary)
-f1 = f1_score(oof_true, oof_preds_binary)
-
-# Calculate mean and standard deviation of metrics for each fold
-mean_accuracy = np.mean(accuracy_list)
-std_accuracy = np.std(accuracy_list)
-mean_precision = np.mean(precision_list)
-std_precision = np.std(precision_list)
-mean_recall = np.mean(recall_list)
-std_recall = np.std(recall_list)
-mean_f1 = np.mean(f1_list)
-std_f1 = np.std(f1_list)
 ```
 
 ```{python}
@@ -496,11 +478,78 @@ ax.legend()
 plt.show()
 ```
 
+The model has been trained with binary cross-entropy which effectively will maximize prediction accuracy. Since we are more concerned with financial loss, we then choose the prediction threshold that minimizes the financial loss. We calculate the financial loss across different thresholds using the financial loss function. The optimal threshold is approximately 0.8. We then evaluate the model using the optimal threshold and calculate the financial loss of approximately $0.24 per record with the Neural Network. The financial loss and its components across a range of thresholds is shown below.
+```{python}
+def calculate_financial_components(y_true, y_probs, threshold):
+    y_pred = (y_probs >= threshold).astype(int)
+    fp = np.sum((y_true == 0) & (y_pred == 1))
+    fn = np.sum((y_true == 1) & (y_pred == 0))
+    total_loss = fp * 17 + fn * 5
+    return total_loss, fp * 17, fn * 5
+
+# Evaluate financial impact across thresholds
+thresholds = np.linspace(0, 1, 101)
+total_losses = []
+fp_losses = []
+fn_losses = []
+
+for t in thresholds:
+    total_loss, fp_loss, fn_loss = calculate_financial_components(oof_true, oof_preds, t)
+    total_losses.append(total_loss)
+    fp_losses.append(fp_loss)
+    fn_losses.append(fn_loss)
+
+optimal_threshold = thresholds[np.argmin(total_losses)]
+print(f"Optimal threshold: {optimal_threshold}")
+
+optimal_loss = total_losses[np.argmin(total_losses)]
+print(f"Financial loss at optimal threshold: {optimal_loss / len(oof_true)}")
+```
+
+```{python}
+# | output: false
+# | eval: false
+
+# | label: fig-financial-loss-threshold
+# | fig-cap: "Total, False Positive, and False Negative Financial Losses Across Different Thresholds."
+# plt.figure(figsize=(10, 6))
+plt.plot(thresholds, total_losses, label='Total Financial Loss', color='blue')
+plt.plot(thresholds, fp_losses, label='False Positives Loss', linestyle='--', color='red')
+plt.plot(thresholds, fn_losses, label='False Negatives Loss', linestyle='--', color='green')
+
+plt.title('Financial Loss Across Different Thresholds')
+plt.xlabel('Threshold')
+plt.ylabel('Financial Loss')
+plt.legend()
+plt.grid(True)
+plt.show()
+```
+
 ```{python}
 # | output: true
 # | eval: true
 
 # | label: print-metrics-nn
+
+# Convert from probabilities to binary predictions
+oof_preds_binary = (oof_preds > optimal_threshold).astype(int)
+
+# Compute metrics for the entire dataset
+accuracy = accuracy_score(oof_true, oof_preds_binary)
+precision = precision_score(oof_true, oof_preds_binary)
+recall = recall_score(oof_true, oof_preds_binary)
+f1 = f1_score(oof_true, oof_preds_binary)
+
+# Calculate mean and standard deviation of metrics for each fold
+mean_accuracy = np.mean(accuracy_list)
+std_accuracy = np.std(accuracy_list)
+mean_precision = np.mean(precision_list)
+std_precision = np.std(precision_list)
+mean_recall = np.mean(recall_list)
+std_recall = np.std(recall_list)
+mean_f1 = np.mean(f1_list)
+std_f1 = np.std(f1_list)
+
 print(f'Overall Accuracy: {accuracy}')
 print(f'Overall Precision: {precision}')
 print(f'Overall Recall: {recall}')
@@ -515,7 +564,7 @@ print(f'Mean F1 Score: {mean_f1}, Std F1 Score: {std_f1}')
 print(model.summary())
 ```
 
-
+In addition to the financial loss, the traditional classification metrics are calculated and displayed below in order to better understand the model's performance.
 ```{python}
 # | output: false
 # | eval: false
@@ -537,6 +586,9 @@ class_report_df = class_report_df.fillna("")
 metrics_md = class_report_df.to_markdown()
 Markdown(metrics_md)
 ```
+
+# TODO: Continue work here
+### Other model for comparison
 
 ## Results and Discussion
 ### Classifier Performance
