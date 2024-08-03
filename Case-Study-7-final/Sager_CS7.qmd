@@ -209,6 +209,21 @@ plt.ylabel('Frequency')
 plt.show()
 ```
 
+To better understand the distribution of the other features, we can plot a histogram of the 'x20' variable. The 'x20' variable appears to be normally distributed. We could also plot histograms of other features, but for brevity, we will only show the distribution of 'x20'.
+
+```{python}
+# | label: fig-feature-dist
+# | fig-cap: "Distribution of x20 Variable. This variable appears to be Normally distributed."
+
+# plt.figure(figsize=(8, 6))
+# sns.histplot(data["mass"], bins=5, kde=False, edgecolor="black")
+plt.hist(data['x20'], bins=20, edgecolor='black')
+plt.title("Histogram of 'x20' Variable")
+plt.xlabel("x20")
+plt.ylabel("Frequency")
+plt.show()
+```
+
 ### Missing Data
 
 ```{python}
@@ -329,20 +344,6 @@ country_to_num = {
 data['x24'] = data['x24'].map(country_to_num)
 ```
 # TODO: Continue work here
-To better understand the distribution of the other features, we can plot a histogram of the 'f4' variable. The 'f4' variable appears to be also uniformly distributed. We could also plot histograms of other features, but for brevity, we will only show the distribution of 'f4'.
-
-```{python}
-# | label: fig-feature-dist
-# | fig-cap: "Distribution of F4 Variable. This variable appears to be Uniformly distributed."
-
-# plt.figure(figsize=(8, 6))
-# sns.histplot(data["mass"], bins=5, kde=False, edgecolor="black")
-plt.hist(data['f4'], bins=5, edgecolor='black')
-plt.title("Histogram of 'f4' Variable")
-plt.xlabel("f4")
-plt.ylabel("Frequency")
-plt.show()
-```
 
 ## Model Building
 To classify the records, we will fit a dense Neural Network. We will evaluate the models on validation data using accuracy and other classification metrics such as precision and recall.
