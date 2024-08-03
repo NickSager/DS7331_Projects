@@ -206,10 +206,12 @@ sns.histplot(data['x37'], bins=30, kde=True)
 plt.title('Distribution of x37')
 plt.xlabel('x37')
 plt.ylabel('Frequency')
+plt.show()
 ```
 
-Here we are checking for missing values within the data set.
-```(python}
+### Missing Data
+
+```{python}
 missing_by_column = data.isnull().sum()
 total_missing = missing_by_column.sum()
 
@@ -219,8 +221,71 @@ missing_summary.loc["Total"] = total_missing
 print(missing_summary)
 ```
 
-```(python}
-#insert missing data handling here
+Before modelling, we investigate the missing values by feature and class. The table below shows the percentage of missing values for each class. The total percentage of missing values is also shown. Values are missing nearly identically between the two target classes, and seem to be evenly distributed across the features. We conclude that the data is missing completely at random.
+```{python}
+missing_by_column = data.isnull().sum()
+total_entries = len(data)
+missing_percentage = (missing_by_column / total_entries) * 100
+
+class0_missing = data[data["y"] == 0].isnull().sum()
+class1_missing = data[data["y"] == 1].isnull().sum()
+class0_percentage = (class0_missing / len(data[data["y"] == 0])) * 100
+class1_percentage = (class1_missing / len(data[data["y"] == 1])) * 100
+
+total_missing = missing_by_column.sum()
+total_percentage = (total_missing / (total_entries * len(data.columns))) * 100
+
+missing_summary = pd.DataFrame(
+    {
+        "Missing Values": missing_by_column,
+        "Percentage": missing_percentage,
+        "Percentage Class 0": class0_percentage,
+        "Percentage Class 1": class1_percentage,
+    }
+)
+# missing_summary.loc["Total"] = [total_missing, total_percentage]
+missing_summary.loc["Total"] = [
+    total_missing,
+    total_percentage,
+    (class0_missing.sum() / (len(data.columns) * len(data[data["y"] == 0])) * 100),
+    (class1_missing.sum() / (len(data.columns) * len(data[data["y"] == 1])) * 100),
+]
+
+# Sort and display the top 15 missing values
+sorted_missing_summary = missing_summary.drop("Total").sort_values(
+    "Percentage", ascending=False
+).head(10)
+sorted_missing_summary = pd.concat(
+    [sorted_missing_summary, missing_summary.loc[["Total"]]]
+)
+sorted_missing_summary = sorted_missing_summary.round(2)
+
+print(sorted_missing_summary)
+```
+
+```{python}
+# | label: tbl-missing-data
+# | tbl-cap: "Missing data summary by attribute (top 10 only). The table shows the number and percentage of missing values in the dataset."
+
+missing_md = sorted_missing_summary.to_markdown()
+Markdown(missing_md)
+```
+
+The proportion of missing data is relatively low, with most features having less than 2% or 3% missing values. Because the data is missing completely at random, we can impute the missing values with the median of the feature.
+
+```{python}
+numeric_cols = data.select_dtypes(include=['number']).columns
+categorical_cols = data.select_dtypes(include=['object', 'category']).columns
+
+for col in numeric_cols:
+    median_value = data[col].median()
+    data[col] = data[col].fillna(median_value)
+
+for col in categorical_cols:
+    mode_value = data[col].mode()[0]
+    data[col] = data[col].fillna(mode_value)
+
+print(f"Remaining missing data: {data.isnull().sum().sum()}")
 ```
 
 For the model to handle the data, preprocessing needs to occur to make the data into a injestable format. The mutli-object variables are one hot encoded to be used for the model.
@@ -277,30 +342,6 @@ plt.title("Histogram of 'f4' Variable")
 plt.xlabel("f4")
 plt.ylabel("Frequency")
 plt.show()
-```
-
-### Missing Data
-
-As shown in the table below, this dataset is complete and doesn't have any missing values.
-
-```{python}
-# | output: false
-# | eval: true
-missing_by_column = data.isnull().sum()
-total_missing = missing_by_column.sum()
-
-missing_summary = pd.DataFrame(missing_by_column, columns=["Missing Values"])
-missing_summary.loc["Total"] = total_missing
-
-print(missing_summary)
-```
-
-```{python}
-# | label: tbl-missing-data
-# | tbl-cap: "Missing data summary by attribute. There is no missing data in this dataset."
-
-missing_md = missing_summary.to_markdown()
-Markdown(missing_md)
 ```
 
 ## Model Building
