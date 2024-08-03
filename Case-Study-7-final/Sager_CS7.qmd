@@ -47,28 +47,19 @@ from sklearn.metrics import (
     make_scorer,
 )
 ```
-Don't ensemble
-must use CV
-Use advanced methods
-EDA, missing data, different thresholds
-custom function for monetary loss?
-XGB, NN, SVM? - all with CV, only a few minutes
-$17 false positive (1 class), $5 false negative
-calculate loss per sample - whole dataset
-fairly high accuracy - above 90%
 
 ## Introduction
-The goal of this Case Study is to predict the class of a variable that we don't know anything about. The data is anonymized and we are not concerned with explaining the predictions. False positives of class '1' incur a cost of $17 False positives of class '0' incur a cost of $5. Given these, our goal is to develop a model that minimizes financial loss.
+The goal of this Case Study is to predict the class of a variable that we don't know anything about. The data is anonymized and we are not concerned with explaining the predictions. False positives of class '1' incur a cost of $17. False negatives of (class '0') incur a cost of $5. Given these, our goal is to develop a model that minimizes financial loss.
 
 ## Data Processing and Exploration
 ```{python}
 directory = "./Case-Study-7-final/data" if os.path.exists("./Case-Study-7-final/data") else "./data"
 data = pd.read_csv(f"{directory}/final_project(5).csv")
 
-print(data)
+# print(data)
 print(data.dtypes)
 ```
-The data contains 160,000 records containing 50 features and the target variable, a binary label of '1' or '0'. Most features are numeric, but three features are text. These include what appear to be continent, month, day of the week, a percentage change, and a price change stored as a string. We will convert the percentage change and price change to numeric values to be included in our model.
+The data contains 160,000 records containing 50 features and the target variable, a binary label of '1' or '0'. Most features are numeric, but a few features are text. These include what appear to be continent, month, day of the week, a percentage change, and a price change stored as a string. We will convert the percentage change and price change to numeric values to be included in our model.
 
 ### Summary Statistics
 
@@ -204,9 +195,9 @@ data['x37'] = data['x37'].replace('[\$,]', '', regex=True).astype(float)
 ```
 ```{python}
 # | label: fig-x37-dist
-# | fig-cap: "Distribution of Monetary variable. Records show a normal distribution ranging from -4000 to 4000.
+# | fig-cap: "Distribution of Monetary variable. Records show a normal distribution ranging from -4000 to 4000."
 #Histogtam
-plt.figure(figsize=(10, 6))
+# plt.figure(figsize=(10, 6))
 sns.histplot(data['x37'], bins=30, kde=True)
 plt.title('Distribution of x37')
 plt.xlabel('x37')
@@ -221,8 +212,8 @@ To better understand the distribution of the other features, we can plot a histo
 # | fig-cap: "Distribution of x20 Variable. This variable appears to be Normally distributed."
 
 # plt.figure(figsize=(8, 6))
-# sns.histplot(data["mass"], bins=5, kde=False, edgecolor="black")
-plt.hist(data['x20'], bins=20, edgecolor='black')
+sns.histplot(data["x20"], bins=20, kde=False, edgecolor="black")
+# plt.hist(data['x20'], bins=20, edgecolor='black')
 plt.title("Histogram of 'x20' Variable")
 plt.xlabel("x20")
 plt.ylabel("Frequency")
@@ -309,10 +300,10 @@ print(f"Remaining missing data: {data.isnull().sum().sum()}")
 ```
 
 ## Model Building
-To classify the records, we will fit a dense Neural Network. We will evaluate the models on validation data using accuracy and other classification metrics such as precision and recall.
+To classify the records, we will fit a dense Neural Network and another model. Whichever model minimizes financial loss will be selected as the final classifier. We will evaluate the models in validation primarily on the financial loss. We will also use accuracy and other classification metrics such as precision and recall for reference.
 
 ### Data Preparation
-Before fitting models, we need to prepare the data. We will scale the features using the StandardScaler. Categorical variables will be one-hot encoded. We will then split the data into five folds for cross-validation. We will fit the model on four folds and validate on the remaining fold. We will store the out-of-fold predictions and use them to evaluate the model.
+Before fitting models, we need to prepare the data. We will scale the numerical features using the StandardScaler. Categorical variables will be one-hot encoded. We will then split the data into five folds for cross-validation. We will fit the model on four folds and validate on the remaining fold. We will store the out-of-fold predictions and use them to evaluate the model.
 ```{python}
 # Make arrays
 target_column = 'y'
@@ -340,9 +331,17 @@ kf = KFold(n_splits=5, shuffle=True, random_state=137)
 ```
 
 ### Loss Functions
-This task has very specific requirements. We need to minimize the financial loss incurred by incorrect predictions. False positives of class '1' incur a cost of $17. False negatives incur a penalty of $5. Since all of our machine learning frameworks allow us to do do, we will define a custom loss function to minimize the financial loss and train for that rather than the typically maximization of accuracy. The loss function will take the true labels and predicted probabilities as input and return the financial loss. We will create these for scikit-learn, XGBoost and TensorFlow.
+This task has very specific requirements. We need to minimize the financial loss incurred by incorrect predictions. False positives of class '1' incur a cost of $17. False negatives incur a penalty of $5. Since all of our machine learning frameworks allow us to do so, we will define a custom loss function to minimize the financial loss and train for that rather than the typical maximization of accuracy. The loss function will take the true labels and predicted probabilities as input and return the financial loss. We will create these for scikit-learn, XGBoost and TensorFlow. (See Appendix)
 ```{python}
-# Note: These don't work for tf. probably better to min normal loss and then rune threshold
+# Primary financial loss function, use for evaluation
+def calculate_financial_components(y_true, y_probs, threshold):
+    y_pred = (y_probs >= threshold).astype(int)
+    fp = np.sum((y_true == 0) & (y_pred == 1))
+    fn = np.sum((y_true == 1) & (y_pred == 0))
+    total_loss = fp * 17 + fn * 5
+    return total_loss, fp * 17, fn * 5
+
+# Note: These don't work for tf. probably better to minimize normal loss and then tune threshold
 # Scikit-learn
 def financial_loss_skl(y_true, y_pred):
     fp = ((y_true == 0) & (y_pred == 1)).sum() * 17  # False Positives
@@ -375,9 +374,9 @@ def custom_objective_xgb(preds, dtrain):
 
 ### Dense Neural Network
 
-The data is split into five folds for cross-validation and to compute the out-of-fold predictions. The model is trained with early stopping and dropout layers to prevent over-fitting. The out-of-fold predictions are stored for the entire dataset and used to evaluate overall performance.
+The data is split into five folds for cross-validation and to compute the out-of-fold predictions. The model is trained with early stopping and dropout layers to prevent over-fitting. Out-of-fold predictions are stored for the entire dataset and used to evaluate overall performance.
 
-The Neural Network model has three hidden layers with 256, 64, 32, and 16 units and a final output layer with a sigmoid activation function. The activation functions for the hidden layers are RELU, and Sigmoid activation is chosen for the final layer since we are doing a binary classification. The model is compiled with the Adam optimizer and binary cross-entropy loss function. The model is trained for 100 epochs with a batch size of 256. Early stopping is used to stop training when the validation loss does not improve for five consecutive epochs. Dropout layers are used with 20% dropout rate between each hidden layer to prevent over-fitting. More complicated models were explored, but quickly reach diminishing returns in performance, so the simpler model was chosen. Training and validation losses for each fold are shown below.
+The Neural Network model has three hidden layers with 256, 64, 32, and 16 units and a final output layer with a sigmoid activation function. The activation functions for the hidden layers are RELU, and Sigmoid activation is chosen for the final layer since we are doing a binary classification. The model is compiled with the Adam optimizer and binary cross-entropy loss function. The model is trained for 100 epochs with a batch size of 256. Early stopping is used to stop training when the validation loss does not improve for five consecutive epochs, typically occurring after 40. Dropout layers are used with 20% dropout rate between each hidden layer to prevent over-fitting. More complicated models were explored, but quickly reach diminishing returns in performance, so the simpler model was chosen. Training and validation losses for each fold are shown below.
 
 ```{python NN with KFold Cross-Validation}
 # | output: false
@@ -455,8 +454,8 @@ for train_index, val_index in kf.split(X):
 ```
 
 ```{python}
-# | output: false
-# | eval: false
+# | output: true
+# | eval: true
 
 # | label: fig-train-val-loss
 # | fig-cap: "Training and Validation Losses per fold for each epoch in the Neural Network model."
@@ -480,12 +479,8 @@ plt.show()
 
 The model has been trained with binary cross-entropy which effectively will maximize prediction accuracy. Since we are more concerned with financial loss, we then choose the prediction threshold that minimizes the financial loss. We calculate the financial loss across different thresholds using the financial loss function. The optimal threshold is approximately 0.8. We then evaluate the model using the optimal threshold and calculate the financial loss of approximately $0.24 per record with the Neural Network. The financial loss and its components across a range of thresholds is shown below.
 ```{python}
-def calculate_financial_components(y_true, y_probs, threshold):
-    y_pred = (y_probs >= threshold).astype(int)
-    fp = np.sum((y_true == 0) & (y_pred == 1))
-    fn = np.sum((y_true == 1) & (y_pred == 0))
-    total_loss = fp * 17 + fn * 5
-    return total_loss, fp * 17, fn * 5
+# | output: true
+# | eval: true
 
 # Evaluate financial impact across thresholds
 thresholds = np.linspace(0, 1, 101)
@@ -508,8 +503,8 @@ print(f"Financial loss at optimal threshold: {avg_loss}")
 ```
 
 ```{python}
-# | output: false
-# | eval: false
+# | output: true
+# | eval: true
 
 # | label: fig-financial-loss-threshold
 # | fig-cap: "Total, False Positive, and False Negative Financial Losses Across Different Thresholds."
@@ -566,7 +561,6 @@ print(f'Mean F1 Score: {mean_f1}, Std F1 Score: {std_f1}')
 print(model.summary())
 ```
 
-In addition to the financial loss, the traditional classification metrics are calculated and displayed below in order to better understand the model's performance.
 ```{python}
 # | output: false
 # | eval: false
@@ -594,7 +588,7 @@ Markdown(metrics_md)
 
 ## Results and Discussion
 ### Classifier Performance
-The final classifier is largely effective at reducing financial loss. As shown by the higher precision (0.95) and lower recall (0.78) for class 1 in the confusion matrix, the model is most incentivized to minimize false positives. This comes at the cost of a slight reduction in total accuracy compared to the training. Adjusting the threshold to accomplish this results in a lower precision (0.87) and higher recall (0.97) for class 0. The resulting financial loss computed on out-of sample predictions over the entire dataset is $0.24 per record or approximately $40,000. Though we don't know much else about this problem, this is presumably offset by some sort of gain for correct predictions. As shown in discussion of threshold in the neural network section above, the financial loss is relatively constant across most thresholds. Thus most of the gains have come from training the model to have accurate predictions. Tuning the threshold with these particular losses mostly serves to optimize as much as possible.
+The final classifier is largely effective at reducing financial loss. As shown by the higher precision (0.98) and lower recall (0.93) for class 1 in the confusion matrix, the model is most incentivized to minimize false positives. This comes at the cost of a slight reduction in total accuracy compared to the training. Adjusting the threshold to accomplish this results in a lower precision (0.95) and higher recall (0.99) for class 0. The resulting financial loss computed on out-of sample predictions over the entire dataset is $0.25 per record or approximately $40,000. Though we don't know much else about this problem, this is presumably offset by some sort of gain for correct predictions. As shown in discussion of threshold in the neural network section above, the financial loss is relatively constant across most thresholds. Thus most of the gains have come from training the model to have accurate predictions. Tuning the threshold with these particular losses mostly serves to optimize as much as possible.
 
 The Neural Network outperformed the XGBoost model at reducing financial loss. The table below compares the performance of the two across a variety of metrics. The confusion matrix, ROC plot, and final classification report for the final classifier are also shown below.
 
@@ -627,8 +621,8 @@ comparison = {
 }
 
 comp_df = pd.DataFrame(comparison)
-class_report_df = class_report_df.round(3)
-class_report_df = class_report_df.fillna("")
+comp_df = comp_df.round(3)
+comp_df = comp_df.fillna("")
 
 comp_md = comp_df.to_markdown()
 Markdown(comp_md)
