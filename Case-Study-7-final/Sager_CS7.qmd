@@ -26,6 +26,7 @@ import pandas as pd
 import os
 
 from IPython.display import Markdown
+import xgboost as xgb
 
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -42,6 +43,7 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
+    make_scorer,
 )
 ```
 Don't ensemble
@@ -55,7 +57,7 @@ calculate loss per sample - whole dataset
 fairly high accuracy - above 90%
 
 ## Introduction
-The goal of this Case Study is to predict the class of a variable that we don't know anything about. The data is anonymized and we are not concerned with explaining the predictions. False positives of class '1' incur a cost of $100. False positives of class '0' incur a cost of $25. Given these, our goal is to develop a model that minimizes financial loss.
+The goal of this Case Study is to predict the class of a variable that we don't know anything about. The data is anonymized and we are not concerned with explaining the predictions. False positives of class '1' incur a cost of $17 False positives of class '0' incur a cost of $5. Given these, our goal is to develop a model that minimizes financial loss.
 
 ## Data Processing and Exploration
 ```{python}
@@ -305,8 +307,6 @@ for col in categorical_cols:
 print(f"Remaining missing data: {data.isnull().sum().sum()}")
 ```
 
-# TODO: Continue work here
-
 ## Model Building
 To classify the records, we will fit a dense Neural Network. We will evaluate the models on validation data using accuracy and other classification metrics such as precision and recall.
 
@@ -338,6 +338,37 @@ X = pipeline.fit_transform(X_raw)
 kf = KFold(n_splits=5, shuffle=True, random_state=137)
 ```
 
+### Loss Functions
+This task has very specific requirements. We need to minimize the financial loss incurred by incorrect predictions. False positives of class '1' incur a cost of $17. False negatives incur a penalty of $5. Since all of our machine learning frameworks allow us to do do, we will define a custom loss function to minimize the financial loss and train for that rather than the typically maximization of accuracy. The loss function will take the true labels and predicted probabilities as input and return the financial loss. We will create these for scikit-learn, XGBoost and TensorFlow.
+```{python}
+# Scikit-learn
+def financial_loss_skl(y_true, y_pred):
+    fp = ((y_true == 0) & (y_pred == 1)).sum() * 17  # False Positives
+    fn = ((y_true == 1) & (y_pred == 0)).sum() * 5   # False Negatives
+    return fp + fn
+
+financial_loss_scorer_skl = make_scorer(financial_loss_skl, greater_is_better=False)
+
+# TensorFlow
+def financial_loss_tf(y_true, y_pred):
+    y_pred = tf.round(y_pred)
+    fp = tf.reduce_sum(tf.cast((y_true == 0) & (y_pred == 1), tf.float32)) * 17.0
+    fn = tf.reduce_sum(tf.cast((y_true == 1) & (y_pred == 0), tf.float32)) * 5.0
+    return fp + fn
+
+# XGBoost
+def custom_objective_xgb(preds, dtrain):
+    labels = dtrain.get_label()
+    preds = 1.0 / (1.0 + np.exp(-preds))  # Transform predictions to probability
+    fp_grad = 17 * (labels - preds) * (labels == 0)
+    fn_grad = 5 * (preds - labels) * (labels == 1)
+    grad = fp_grad + fn_grad
+    hess = preds * (1 - preds)
+    return grad, hess
+```
+
+# TODO: Continue work here
+
 ### Dense Neural Network
 ```{python}
 scaler = StandardScaler()
@@ -346,7 +377,7 @@ X = data.drop(["label"], axis=1)
 X = scaler.fit_transform(X)
 ```
 
-The data is first transformed to a suitable format for the classifier. The features are scaled using the StandardScaler. We then split the data into five folds for cross-validation and compute the out-of-fold predictions. The model is trained with early stopping and dropout layers to prevent over-fitting. The out-of-fold predictions are stored for the entire dataset and used to evaluate overall performance.
+The data is split into five folds for cross-validation and to compute the out-of-fold predictions. The model is trained with early stopping and dropout layers to prevent over-fitting. The out-of-fold predictions are stored for the entire dataset and used to evaluate overall performance.
 
 The Neural Network model has three hidden layers with 64, 32, and 16 units and a final output layer with a sigmoid activation function. The activation functions for the hidden layers are RELU, and Sigmoid activation is chosen for the final layer since we are doing a binary classification. The model is compiled with the Adam optimizer and binary cross-entropy loss function. The model is trained for 20 epochs with a batch size of 64. Early stopping is used to stop training when the validation loss does not improve for three consecutive epochs. Dropout layers are used with 20% dropout rate between each hidden layer to prevent over-fitting. More complicated models were explored, but quickly reach diminishing returns in performance, so the simpler model was chosen.
 
