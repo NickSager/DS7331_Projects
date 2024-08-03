@@ -27,7 +27,9 @@ import os
 
 from IPython.display import Markdown
 
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import (
     KFold,
 )
@@ -307,6 +309,34 @@ print(f"Remaining missing data: {data.isnull().sum().sum()}")
 
 ## Model Building
 To classify the records, we will fit a dense Neural Network. We will evaluate the models on validation data using accuracy and other classification metrics such as precision and recall.
+
+### Data Preparation
+Before fitting models, we need to prepare the data. We will scale the features using the StandardScaler. Categorical variables will be one-hot encoded. We will then split the data into five folds for cross-validation. We will fit the model on four folds and validate on the remaining fold. We will store the out-of-fold predictions and use them to evaluate the model.
+```{python}
+# Make arrays
+target_column = 'y'
+X_raw = data.drop(columns=[target_column])
+y = data[target_column]
+
+# Categorical to onehot and numerical to standard scaler
+numeric_cols = X_raw.select_dtypes(include=['number']).columns
+categorical_cols = X_raw.select_dtypes(include=['object', 'category']).columns
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', StandardScaler(), numeric_cols),
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols)
+    ]
+)
+
+pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor)
+])
+
+X = pipeline.fit_transform(X_raw)
+
+kf = KFold(n_splits=5, shuffle=True, random_state=137)
+```
 
 ### Dense Neural Network
 ```{python}
