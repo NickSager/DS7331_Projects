@@ -1,6 +1,6 @@
 ---
-title: "QTW Case Study 6"
-author: "Nicholas Sager"
+title: "QTW Case Study 7 - Final"
+author: "Nicholas Sager, Will Jones"
 date: last-modified
 format: 
   html: 
@@ -27,6 +27,7 @@ import os
 
 from IPython.display import Markdown
 import xgboost as xgb
+from xgboost import XGBClassifier
 import tensorflow as tf
 
 from sklearn.ensemble import RandomForestClassifier
@@ -461,8 +462,7 @@ for train_index, val_index in kf.split(X):
 ```{python}
 # | output: true
 # | eval: true
-
-# | label: fig-train-val-loss
+# | label: fig-nn-train-val-loss
 # | fig-cap: "Training and Validation Losses per fold for each epoch in the Neural Network model."
 
 # Plotting training and validation losses
@@ -510,8 +510,7 @@ print(f"Financial loss at optimal threshold: {avg_loss}")
 ```{python}
 # | output: true
 # | eval: true
-
-# | label: fig-financial-loss-threshold
+# | label: fig-financial-loss-threshold-nn
 # | fig-cap: "Total, False Positive, and False Negative Financial Losses Across Different Thresholds."
 # plt.figure(figsize=(10, 6))
 plt.plot(thresholds, total_losses, label='Total Financial Loss', color='blue')
@@ -529,7 +528,6 @@ plt.show()
 ```{python}
 # | output: true
 # | eval: true
-
 # | label: print-metrics-nn
 
 # Convert from probabilities to binary predictions
@@ -567,9 +565,8 @@ print(model.summary())
 ```
 
 ```{python}
-# | output: false
-# | eval: false
-
+# | output: true
+# | eval: true
 # | label: tbl-class-report-nn
 # | tbl-cap: "Dense Neural Network Cross-Validation Classification Report"
 
@@ -579,7 +576,7 @@ class_report_df.loc["accuracy"] = class_report_df.loc["accuracy"].drop(
     ["precision", "recall"]
 )
 class_report_df = class_report_df.rename(
-    index={"0": "background", "1": "Signal"}
+    index={"0": "Class 0", "1": "Class 1"}
 )
 class_report_df = class_report_df.round(3)
 class_report_df = class_report_df.fillna("")
@@ -692,9 +689,9 @@ print(f"Financial loss at optimal threshold: {avg_loss_rf}")
 ```{python}
 # | output: true
 # | eval: true
-
 # | label: fig-financial-loss-threshold-rf
 # | fig-cap: "Total, False Positive, and False Negative Financial Losses Across Different Thresholds. Random Forest Classifier."
+
 # plt.figure(figsize=(10, 6))
 plt.plot(thresholds, total_losses, label='Total Financial Loss', color='blue')
 plt.plot(thresholds, fp_losses, label='False Positives Loss', linestyle='--', color='red')
@@ -752,19 +749,18 @@ print(f'RF Overall ROC-AUC: {roc_auc}')
 The Random Forest classifier is trained with the best parameters from the randomized search. They are 300 estimators, 2 samples per split, max depth of 75, and Gini criterion. We then evaluate the model with these parameters using 5-fold cross validation. The average financial loss for this model is $0.63 per record. The other overall classification metrics are worse than the Neural Network.
 
 ```{python}
-# | output: false
-# | eval: false
-
+# | output: true
+# | eval: true
 # | label: tbl-class-report-rf
 # | tbl-cap: "Random Forest Cross-Validation Classification Report"
 
-class_report_dict = classification_report(y, y_pred_rf, output_dict=True)
+class_report_dict = classification_report(y, oof_preds_binary_rf, output_dict=True)
 class_report_df = pd.DataFrame(class_report_dict).transpose()
 class_report_df.loc["accuracy"] = class_report_df.loc["accuracy"].drop(
     ["precision", "recall"]
 )
 class_report_df = class_report_df.rename(
-    index={"0": "Not Bankruptcy", "1": "Bankruptcy"}
+    index={"0": "Class 0", "1": "Class 1"}
 )
 class_report_df = class_report_df.round(3)
 class_report_df = class_report_df.fillna("")
@@ -772,8 +768,156 @@ class_report_df = class_report_df.fillna("")
 metrics_md = class_report_df.to_markdown()
 Markdown(metrics_md)
 ```
-# TODO: Continue work here
-### Other model and hyperparameter tuning for comparison (XGBoost?)
+
+### XGBoost Classifier
+
+We also fit an XGBoost Clasifier.
+
+```{python}
+#parameter grid
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'learning_rate': [0.01, 0.1, 0.2],
+    'max_depth': [4, 6, 8, 10],
+    'subsample': [0.6, 0.8, 1.0],
+    'colsample_bytree': [0.6, 0.8, 1.0],
+    'gamma': [0, 0.1, 0.2, 0.3],
+    'reg_alpha': [0, 0.1, 0.5, 1.0],
+    'reg_lambda': [1.0, 1.5, 2.0],
+}
+
+# xgb classifier
+xgb_clf = xgb.XGBClassifier(
+    # use_label_encoder=False,
+    eval_metric='logloss',
+)
+
+# adding randomized cv
+model_rs = RandomizedSearchCV(
+    estimator=xgb_clf,
+    param_distributions=param_grid,
+    n_iter=10,
+    scoring='f1',
+    cv=5,
+    verbose=0,
+    random_state=42,
+    n_jobs=-1,
+)
+
+# model fitting
+model_rs.fit(X, y)
+
+# best params
+print(f"Best parameters: {model_rs.best_params_}")
+print(f"Best F1 score: {model_rs.best_score_}")
+
+# model training with best params
+best_params = model_rs.best_params_
+model = xgb.XGBClassifier(
+    **best_params,
+    # use_label_encoder=False,
+    early_stopping_rounds=5,
+    eval_metric='logloss'
+)
+#setting up with 5 folds
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+
+xgb_oof_preds = np.zeros(len(X))
+xgb_oof_true = np.zeros(len(X))
+
+#metrics
+accuracy_list = []
+precision_list = []
+recall_list = []
+f1_list = []
+
+train_losses = []
+val_losses = []
+
+#model training across each fold
+for train_index, val_index in kf.split(X):
+    X_train, X_val = X[train_index], X[val_index]
+    y_train, y_val = y[train_index], y[val_index]
+
+    eval_set = [(X_train, y_train), (X_val, y_val)]
+    model.fit(
+        X_train,
+        y_train,
+        eval_set=eval_set,
+        verbose=False,
+    )
+
+    #model losses
+    results = model.evals_result()
+    train_losses.append(results['validation_0']['logloss'])
+    val_losses.append(results['validation_1']['logloss'])
+
+    y_pred = model.predict(X_val)
+
+    # predictions
+    xgb_oof_preds[val_index] = y_pred
+    xgb_oof_true[val_index] = y_val
+
+    # metrics for each fold
+    accuracy_list.append(accuracy_score(y_val, y_pred))
+    precision_list.append(precision_score(y_val, y_pred))
+    recall_list.append(recall_score(y_val, y_pred))
+    f1_list.append(f1_score(y_val, y_pred))
+```
+
+```{python}
+# | output: true
+# | eval: true
+# | label: fig-xgb-train-val-loss
+# | fig-cap: "Training and Validation Losses per fold for each iteration in the XGBoost model."
+
+#plottinging fold losses
+for i in range(5):
+    plt.plot(train_losses[i], label=f'Train Loss Fold {i+1}')
+    plt.plot(val_losses[i], label=f'Val Loss Fold {i+1}')
+plt.xlabel('Epochs')
+plt.ylabel('Log Loss')
+plt.legend()
+plt.show()
+
+# metrics
+print(f'Average Accuracy: {np.mean(accuracy_list)}')
+print(f'Average Precision: {np.mean(precision_list)}')
+print(f'Average Recall: {np.mean(recall_list)}')
+print(f'Average F1 Score: {np.mean(f1_list)}')
+
+# Calculate metrics for XGB
+xgb_optimal_threshold = 0.5
+xgb_preds_binary = (xgb_oof_preds >= xgb_optimal_threshold).astype(int)
+xgb_accuracy = accuracy_score(xgb_oof_true, (xgb_oof_preds >= xgb_optimal_threshold).astype(int))
+xgb_precision = precision_score(xgb_oof_true, (xgb_oof_preds >= xgb_optimal_threshold).astype(int))
+xgb_recall = recall_score(xgb_oof_true, (xgb_oof_preds >= xgb_optimal_threshold).astype(int))
+xgb_roc_auc = roc_auc_score(xgb_oof_true, xgb_oof_preds)
+
+xgb_total_financial_loss = calculate_financial_components(xgb_oof_true, xgb_oof_preds, optimal_threshold)[0]
+xgb_avg_financial_loss = xgb_total_financial_loss / len(xgb_oof_true)
+```
+
+```{python}
+# | output: true
+# | eval: true
+# | label: tbl-class-report-xgb
+# | tbl-cap: "XGBoost Cross-Validation Classification Report"
+
+class_report_dict = classification_report(y, xgb_preds_binary, output_dict=True)
+class_report_df = pd.DataFrame(class_report_dict).transpose()
+class_report_df.loc["accuracy"] = class_report_df.loc["accuracy"].drop(
+    ["precision", "recall"]
+)
+class_report_df = class_report_df.rename(
+    index={"0": "Class 0", "1": "Class 1"}
+)
+class_report_df = class_report_df.round(3)
+class_report_df = class_report_df.fillna("")
+
+metrics_md = class_report_df.to_markdown()
+Markdown(metrics_md)
+```
 
 ## Results and Discussion
 ### Classifier Performance
@@ -785,19 +929,6 @@ The Neural Network outperformed the XGBoost model at reducing financial loss. Th
 # | label: tbl-model-comparison
 # | tbl-cap: "Comparison between the two models. The table shows financial loss, accuracy, precision, recall, and ROC-AUC score for each model."
 
-# Placeholder values for XGB - replace these with actual computed values
-xgb_oof_preds = np.random.rand(len(oof_true))
-xgb_oof_true = oof_true
-
-# Calculate metrics for XGB
-xgb_accuracy = accuracy_score(xgb_oof_true, (xgb_oof_preds >= optimal_threshold).astype(int))
-xgb_precision = precision_score(xgb_oof_true, (xgb_oof_preds >= optimal_threshold).astype(int))
-xgb_recall = recall_score(xgb_oof_true, (xgb_oof_preds >= optimal_threshold).astype(int))
-xgb_roc_auc = roc_auc_score(xgb_oof_true, xgb_oof_preds)
-
-#TODO: Change these out for calculated ones or rework outside this block
-xgb_total_financial_loss = calculate_financial_components(xgb_oof_true, xgb_oof_preds, optimal_threshold)[0]
-xgb_avg_financial_loss = xgb_total_financial_loss / len(xgb_oof_true)
 
 comparison = {
     "Model": ["Neural Network", "XGBoost", "Random Forest"],
@@ -884,190 +1015,6 @@ class_report_df = class_report_df.fillna("")
 
 metrics_md = class_report_df.to_markdown()
 Markdown(metrics_md)
-```
-# Look and see if you want to keep this 
-
-```{python}
-#setting 5 folds to be similar to DNN
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
-
-oof_preds = np.zeros(len(X))
-oof_true = np.zeros(len(X))
-
-# score list
-accuracy_list = []
-precision_list = []
-recall_list = []
-f1_list = []
-
-train_losses = []
-val_losses = []
-
-#kfolds xgb
-for train_index, val_index in kf.split(X):
-    X_train, X_val = X[train_index], X[val_index]
-    y_train, y_val = y[train_index], y[val_index]
-    #xgb model
-    model = xgb.XGBClassifier(
-        n_estimators=100,
-        learning_rate=0.1,
-        max_depth=6,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        use_label_encoder=False,
-        eval_metric='logloss',
-    )
-    #fitting the model
-    eval_set = [(X_train, y_train), (X_val, y_val)]
-    model.fit(
-        X_train,
-        y_train,
-        early_stopping_rounds=5,
-        eval_set=eval_set,
-        verbose=True,
-    )
-
-    # add the losses
-    results = model.evals_result()
-    train_losses.append(results['validation_0']['logloss'])
-    val_losses.append(results['validation_1']['logloss'])
-
-    y_pred = model.predict(X_val)
-
-    # model predictions
-    oof_preds[val_index] = y_pred
-    oof_true[val_index] = y_val
-
-    # metrics
-    accuracy_list.append(accuracy_score(y_val, y_pred))
-    precision_list.append(precision_score(y_val, y_pred))
-    recall_list.append(recall_score(y_val, y_pred))
-    f1_list.append(f1_score(y_val, y_pred))
-
-#plotting the losses across each fold
-for i in range(5):
-    plt.plot(train_losses[i], label=f'Train Loss Fold {i+1}')
-    plt.plot(val_losses[i], label=f'Val Loss Fold {i+1}')
-plt.xlabel('Epochs')
-plt.ylabel('Log Loss')
-plt.legend()
-plt.show()
-
-#metrics
-print(f'Average Accuracy: {np.mean(accuracy_list)}')
-print(f'Average Precision: {np.mean(precision_list)}')
-print(f'Average Recall: {np.mean(recall_list)}')
-print(f'Average F1 Score: {np.mean(f1_list)}')
-```
-
-# hypertuning the model 
-
-```{python}
-from sklearn.model_selection import RandomizedSearchCV
-#parameter grid
-param_grid = {
-    'n_estimators': [100, 200, 300],
-    'learning_rate': [0.01, 0.1, 0.2],
-    'max_depth': [4, 6, 8, 10],
-    'subsample': [0.6, 0.8, 1.0],
-    'colsample_bytree': [0.6, 0.8, 1.0],
-    'gamma': [0, 0.1, 0.2, 0.3],
-    'reg_alpha': [0, 0.1, 0.5, 1.0],
-    'reg_lambda': [1.0, 1.5, 2.0],
-}
-
-# xgb classifier
-xgb_clf = xgb.XGBClassifier(
-    use_label_encoder=False,
-    eval_metric='logloss',
-)
-
-# adding randomized cv
-random_search = RandomizedSearchCV(
-    estimator=xgb_clf,
-    param_distributions=param_grid,
-    n_iter=50,
-    scoring='f1',
-    cv=5,
-    verbose=2,
-    random_state=42,
-    n_jobs=-1,
-)
-
-# model fitting
-model_rs.fit(X, y)
-
-# best params
-print(f"Best parameters: {model_rs.best_params_}")
-print(f"Best F1 score: {model_rs.best_score_}")
-
-# model training with best params
-best_params = model_rs.best_params_
-model = xgb.XGBClassifier(
-    **best_params,
-    use_label_encoder=False,
-    eval_metric='logloss'
-)
-#setting up with 5 folds
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
-
-oof_preds = np.zeros(len(X))
-oof_true = np.zeros(len(X))
-
-#metrics
-accuracy_list = []
-precision_list = []
-recall_list = []
-f1_list = []
-
-train_losses = []
-val_losses = []
-
-#model training across each fold
-for train_index, val_index in kf.split(X):
-    X_train, X_val = X[train_index], X[val_index]
-    y_train, y_val = y[train_index], y[val_index]
-
-    eval_set = [(X_train, y_train), (X_val, y_val)]
-    model.fit(
-        X_train,
-        y_train,
-        early_stopping_rounds=5,
-        eval_set=eval_set,
-        verbose=True,
-    )
-
-    #model losses
-    results = model.evals_result()
-    train_losses.append(results['validation_0']['logloss'])
-    val_losses.append(results['validation_1']['logloss'])
-
-    y_pred = model.predict(X_val)
-
-    # predictions
-    oof_preds[val_index] = y_pred
-    oof_true[val_index] = y_val
-
-    # metrics for each fold
-    accuracy_list.append(accuracy_score(y_val, y_pred))
-    precision_list.append(precision_score(y_val, y_pred))
-    recall_list.append(recall_score(y_val, y_pred))
-    f1_list.append(f1_score(y_val, y_pred))
-
-#plottinging fold losses
-for i in range(5):
-    plt.plot(train_losses[i], label=f'Train Loss Fold {i+1}')
-    plt.plot(val_losses[i], label=f'Val Loss Fold {i+1}')
-plt.xlabel('Epochs')
-plt.ylabel('Log Loss')
-plt.legend()
-plt.show()
-
-# metrics
-print(f'Average Accuracy: {np.mean(accuracy_list)}')
-print(f'Average Precision: {np.mean(precision_list)}')
-print(f'Average Recall: {np.mean(recall_list)}')
-print(f'Average F1 Score: {np.mean(f1_list)}')
 ```
 
 
