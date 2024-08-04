@@ -885,8 +885,190 @@ class_report_df = class_report_df.fillna("")
 metrics_md = class_report_df.to_markdown()
 Markdown(metrics_md)
 ```
+# Look and see if you want to keep this 
 
+```{python}
+#setting 5 folds to be similar to DNN
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
+oof_preds = np.zeros(len(X))
+oof_true = np.zeros(len(X))
+
+# score list
+accuracy_list = []
+precision_list = []
+recall_list = []
+f1_list = []
+
+train_losses = []
+val_losses = []
+
+#kfolds xgb
+for train_index, val_index in kf.split(X):
+    X_train, X_val = X[train_index], X[val_index]
+    y_train, y_val = y[train_index], y[val_index]
+    #xgb model
+    model = xgb.XGBClassifier(
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=6,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        use_label_encoder=False,
+        eval_metric='logloss',
+    )
+    #fitting the model
+    eval_set = [(X_train, y_train), (X_val, y_val)]
+    model.fit(
+        X_train,
+        y_train,
+        early_stopping_rounds=5,
+        eval_set=eval_set,
+        verbose=True,
+    )
+
+    # add the losses
+    results = model.evals_result()
+    train_losses.append(results['validation_0']['logloss'])
+    val_losses.append(results['validation_1']['logloss'])
+
+    y_pred = model.predict(X_val)
+
+    # model predictions
+    oof_preds[val_index] = y_pred
+    oof_true[val_index] = y_val
+
+    # metrics
+    accuracy_list.append(accuracy_score(y_val, y_pred))
+    precision_list.append(precision_score(y_val, y_pred))
+    recall_list.append(recall_score(y_val, y_pred))
+    f1_list.append(f1_score(y_val, y_pred))
+
+#plotting the losses across each fold
+for i in range(5):
+    plt.plot(train_losses[i], label=f'Train Loss Fold {i+1}')
+    plt.plot(val_losses[i], label=f'Val Loss Fold {i+1}')
+plt.xlabel('Epochs')
+plt.ylabel('Log Loss')
+plt.legend()
+plt.show()
+
+#metrics
+print(f'Average Accuracy: {np.mean(accuracy_list)}')
+print(f'Average Precision: {np.mean(precision_list)}')
+print(f'Average Recall: {np.mean(recall_list)}')
+print(f'Average F1 Score: {np.mean(f1_list)}')
+```
+
+# hypertuning the model 
+
+```{python}
+from sklearn.model_selection import RandomizedSearchCV
+#parameter grid
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'learning_rate': [0.01, 0.1, 0.2],
+    'max_depth': [4, 6, 8, 10],
+    'subsample': [0.6, 0.8, 1.0],
+    'colsample_bytree': [0.6, 0.8, 1.0],
+    'gamma': [0, 0.1, 0.2, 0.3],
+    'reg_alpha': [0, 0.1, 0.5, 1.0],
+    'reg_lambda': [1.0, 1.5, 2.0],
+}
+
+# xgb classifier
+xgb_clf = xgb.XGBClassifier(
+    use_label_encoder=False,
+    eval_metric='logloss',
+)
+
+# adding randomized cv
+random_search = RandomizedSearchCV(
+    estimator=xgb_clf,
+    param_distributions=param_grid,
+    n_iter=50,
+    scoring='f1',
+    cv=5,
+    verbose=2,
+    random_state=42,
+    n_jobs=-1,
+)
+
+# model fitting
+model_rs.fit(X, y)
+
+# best params
+print(f"Best parameters: {model_rs.best_params_}")
+print(f"Best F1 score: {model_rs.best_score_}")
+
+# model training with best params
+best_params = model_rs.best_params_
+model = xgb.XGBClassifier(
+    **best_params,
+    use_label_encoder=False,
+    eval_metric='logloss'
+)
+#setting up with 5 folds
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+
+oof_preds = np.zeros(len(X))
+oof_true = np.zeros(len(X))
+
+#metrics
+accuracy_list = []
+precision_list = []
+recall_list = []
+f1_list = []
+
+train_losses = []
+val_losses = []
+
+#model training across each fold
+for train_index, val_index in kf.split(X):
+    X_train, X_val = X[train_index], X[val_index]
+    y_train, y_val = y[train_index], y[val_index]
+
+    eval_set = [(X_train, y_train), (X_val, y_val)]
+    model.fit(
+        X_train,
+        y_train,
+        early_stopping_rounds=5,
+        eval_set=eval_set,
+        verbose=True,
+    )
+
+    #model losses
+    results = model.evals_result()
+    train_losses.append(results['validation_0']['logloss'])
+    val_losses.append(results['validation_1']['logloss'])
+
+    y_pred = model.predict(X_val)
+
+    # predictions
+    oof_preds[val_index] = y_pred
+    oof_true[val_index] = y_val
+
+    # metrics for each fold
+    accuracy_list.append(accuracy_score(y_val, y_pred))
+    precision_list.append(precision_score(y_val, y_pred))
+    recall_list.append(recall_score(y_val, y_pred))
+    f1_list.append(f1_score(y_val, y_pred))
+
+#plottinging fold losses
+for i in range(5):
+    plt.plot(train_losses[i], label=f'Train Loss Fold {i+1}')
+    plt.plot(val_losses[i], label=f'Val Loss Fold {i+1}')
+plt.xlabel('Epochs')
+plt.ylabel('Log Loss')
+plt.legend()
+plt.show()
+
+# metrics
+print(f'Average Accuracy: {np.mean(accuracy_list)}')
+print(f'Average Precision: {np.mean(precision_list)}')
+print(f'Average Recall: {np.mean(recall_list)}')
+print(f'Average F1 Score: {np.mean(f1_list)}')
+```
 
 
 
