@@ -29,11 +29,16 @@ from IPython.display import Markdown
 import xgboost as xgb
 import tensorflow as tf
 
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import (
     KFold,
+    train_test_split,
+    RandomizedSearchCV,
+    cross_val_score,
+    cross_val_predict,
 )
 from sklearn.metrics import (
     confusion_matrix,
@@ -583,6 +588,190 @@ metrics_md = class_report_df.to_markdown()
 Markdown(metrics_md)
 ```
 
+### Random Forest Classifier
+
+To verify that the more advanced model is worth the effort, we also train a Random Forest Classifier. To optimize performance, we split the data into train and test splits and use a randomized search to find the best hyperparameters for the model. The overall financial loss and other metrics are then evaluated on the entire dataset using cross-validation.
+
+```{python}
+#| output: false
+#| eval: false
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
+
+param_grid = {
+    "n_estimators": [100, 300, 500],
+    "criterion": ["gini", "entropy"],
+    "max_depth": [5, 15, 50, 75],
+    "min_samples_split": [2, 4, 9],
+}
+# scores = ["accuracy", "precision_weighted", "recall_weighted", "f1_weighted", "roc_auc"]
+scores = ["roc_auc"]
+rf = RandomForestClassifier()
+
+# From SKL Documentation somewhere
+for score in scores:
+    print(f"# Tuning hyper-parameters for {score}")
+    print()
+    clf = RandomizedSearchCV(
+        rf,
+        param_grid,
+        # scoring="%s_weigted" % score,
+        scoring=score,
+        cv=5,
+        n_iter=10,
+        n_jobs=-1,
+        verbose=1,
+    )
+    clf.fit(X_train, y_train)
+
+    print("Best parameters set found on development set:")
+    print()
+    print(clf.best_params_)
+    print()
+    print("Grid scores on development set:")
+    print()
+    means = clf.cv_results_["mean_test_score"]
+    stds = clf.cv_results_["std_test_score"]
+    for mean, std, params in zip(means, stds, clf.cv_results_["params"]):
+        print("%0.3f (+/-%0.3f) for %r" % (mean, std * 2, params))
+    print()
+
+    print("Detailed classification report:")
+    print()
+    print("The model is trained on the full development set.")
+    print("The scores are computed on the full evaluation set.")
+    print()
+    y_true, y_pred = y_test, clf.predict(X_test)
+    print(classification_report(y_true, y_pred))
+    print()
+```
+
+```{python}
+try:
+    # Try to use best parameters if clf is already defined
+    params = clf.best_params_
+except NameError:
+    # Default parameters if clf is not defined. Can be used to save time
+    params = {
+        "n_estimators": 300,
+        "min_samples_split": 2,
+        "max_depth": 75,
+        "criterion": "gini",
+    }
+rf = RandomForestClassifier(**params)
+
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+# cv_scores_rf = cross_val_score(rf, X, y, cv=kf, scoring="roc_auc", n_jobs=-1)
+# y_pred_rf = cross_val_predict(rf, X, y, cv=kf, n_jobs=-1)
+y_prob_rf = cross_val_predict(rf, X, y, cv=kf, method="predict_proba", n_jobs=-1)[:, 1]
+```
+
+```{python}
+# | output: true
+# | eval: true
+
+# Evaluate financial impact across thresholds
+thresholds = np.linspace(0, 1, 101)
+total_losses = []
+fp_losses = []
+fn_losses = []
+
+for t in thresholds:
+    total_loss, fp_loss, fn_loss = calculate_financial_components(y, y_prob_rf, t)
+    total_losses.append(total_loss)
+    fp_losses.append(fp_loss)
+    fn_losses.append(fn_loss)
+
+optimal_threshold_rf = thresholds[np.argmin(total_losses)]
+print(f"Optimal threshold: {optimal_threshold_rf}")
+
+optimal_loss_rf = total_losses[np.argmin(total_losses)]
+avg_loss_rf = optimal_loss_rf / len(y)
+print(f"Financial loss at optimal threshold: {avg_loss_rf}")
+```
+
+```{python}
+# | output: true
+# | eval: true
+
+# | label: fig-financial-loss-threshold-rf
+# | fig-cap: "Total, False Positive, and False Negative Financial Losses Across Different Thresholds. Random Forest Classifier."
+# plt.figure(figsize=(10, 6))
+plt.plot(thresholds, total_losses, label='Total Financial Loss', color='blue')
+plt.plot(thresholds, fp_losses, label='False Positives Loss', linestyle='--', color='red')
+plt.plot(thresholds, fn_losses, label='False Negatives Loss', linestyle='--', color='green')
+
+plt.title('RF Financial Loss Across Different Thresholds')
+plt.xlabel('Threshold')
+plt.ylabel('Financial Loss')
+plt.legend()
+plt.grid(True)
+plt.show()
+```
+
+```{python}
+# | output: true
+# | eval: true
+
+# | label: print-metrics-rf
+
+# Convert from probabilities to binary predictions
+oof_preds_binary_rf = (y_prob_rf > optimal_threshold_rf).astype(int)
+
+# Compute metrics for the entire dataset
+rf_accuracy = accuracy_score(y, oof_preds_binary_rf)
+rf_precision = precision_score(y, oof_preds_binary_rf)
+rf_recall = recall_score(y, oof_preds_binary_rf)
+rf_f1 = f1_score(y, oof_preds_binary_rf)
+rf_roc_auc = roc_auc_score(y, y_prob_rf)
+
+# # Calculate mean and standard deviation of metrics for each fold
+# mean_accuracy = np.mean(accuracy_list)
+# std_accuracy = np.std(accuracy_list)
+# mean_precision = np.mean(precision_list)
+# std_precision = np.std(precision_list)
+# mean_recall = np.mean(recall_list)
+# std_recall = np.std(recall_list)
+# mean_f1 = np.mean(f1_list)
+# std_f1 = np.std(f1_list)
+#
+print(f'RF Overall Accuracy: {accuracy}')
+print(f'RF Overall Precision: {precision}')
+print(f'RF Overall Recall: {recall}')
+print(f'RF Overall F1 Score: {f1}')
+print(f'RF Overall ROC-AUC: {roc_auc}')
+#
+# print(f'Mean Accuracy: {mean_accuracy}, Std Accuracy: {std_accuracy}')
+# print(f'Mean Precision: {mean_precision}, Std Precision: {std_precision}')
+# print(f'Mean Recall: {mean_recall}, Std Recall: {std_recall}')
+# print(f'Mean F1 Score: {mean_f1}, Std F1 Score: {std_f1}')
+
+# Optional print model info
+# print(model.summary())
+```
+
+The Random Forest classifier is trained with the best parameters from the randomized search. They are 300 estimators, 2 samples per split, max depth of 75, and Gini criterion. We then evaluate the model with these parameters using 5-fold cross validation. The average financial loss for this model is $0.63 per record. The other overall classification metrics are worse than the Neural Network.
+
+```{python}
+# | output: false
+# | eval: false
+
+# | label: tbl-class-report-rf
+# | tbl-cap: "Random Forest Cross-Validation Classification Report"
+
+class_report_dict = classification_report(y, y_pred_rf, output_dict=True)
+class_report_df = pd.DataFrame(class_report_dict).transpose()
+class_report_df.loc["accuracy"] = class_report_df.loc["accuracy"].drop(
+    ["precision", "recall"]
+)
+class_report_df = class_report_df.rename(
+    index={"0": "Not Bankruptcy", "1": "Bankruptcy"}
+)
+class_report_df = class_report_df.round(3)
+class_report_df = class_report_df.fillna("")
+
+metrics_md = class_report_df.to_markdown()
+Markdown(metrics_md)
+```
 # TODO: Continue work here
 ### Other model and hyperparameter tuning for comparison (XGBoost?)
 
@@ -611,13 +800,13 @@ xgb_total_financial_loss = calculate_financial_components(xgb_oof_true, xgb_oof_
 xgb_avg_financial_loss = xgb_total_financial_loss / len(xgb_oof_true)
 
 comparison = {
-    "Model": ["Neural Network", "XGBoost"],
-    "Total Financial Loss": [optimal_loss, xgb_total_financial_loss],
-    "Average Financial Loss Per Sample": [avg_loss, xgb_avg_financial_loss],
-    "Overall Accuracy": [mean_accuracy, xgb_accuracy],
-    "Precision": [mean_precision, xgb_precision],
-    "Recall": [mean_recall, xgb_recall],
-    "ROC-AUC": [roc_auc, xgb_roc_auc]
+    "Model": ["Neural Network", "XGBoost", "Random Forest"],
+    "Total Financial Loss": [optimal_loss, xgb_total_financial_loss, optimal_loss_rf],
+    "Average Financial Loss Per Sample": [avg_loss, xgb_avg_financial_loss, avg_loss_rf],
+    "Overall Accuracy": [mean_accuracy, xgb_accuracy, rf_accuracy],
+    "Precision": [mean_precision, xgb_precision, rf_precision],
+    "Recall": [mean_recall, xgb_recall, rf_recall],
+    "ROC-AUC": [roc_auc, xgb_roc_auc, rf_roc_auc],
 }
 
 comp_df = pd.DataFrame(comparison)
