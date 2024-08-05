@@ -3691,12 +3691,13 @@ Table 3: Random Forest Cross-Validation Classification Report
 </section>
 <section id="xgboost-classifier" class="level3">
 <h3 class="anchored" data-anchor-id="xgboost-classifier">XGBoost Classifier</h3>
-<p>We also fit an XGBoost Clasifier.</p>
+<p>To provide another comparison model to Random Forest and Dense Network, we constructed a XGBoost model. To create the best model, we used hyperparameter tuning paired with a Randomized Grid Search CV with 5 folds.</p>
 <div id="78248c2d" class="cell" data-execution_count="33">
 <div class="cell-output cell-output-stdout">
 
 </div>
 </div>
+<p>The loss function for our train and validation is shown in the chart below. The average financial loss for this model is $0.58 per record. The other classification metrics are shown in the classification report and are worse than the Dense Network but better than the Random Forest model.</p>
 <div id="cell-fig-xgb-train-val-loss" class="cell" data-execution_count="34">
 <div class="cell-output cell-output-display">
 <div id="fig-xgb-train-val-loss" class="quarto-figure quarto-figure-center quarto-float anchored">
@@ -3782,7 +3783,7 @@ Table 4: XGBoost Cross-Validation Classification Report
 <section id="classifier-performance" class="level3">
 <h3 class="anchored" data-anchor-id="classifier-performance">Classifier Performance</h3>
 <p>The final classifier is largely effective at reducing financial loss. As shown by the higher precision (0.98) and lower recall (0.93) for class 1 in the confusion matrix, the model is most incentivized to minimize false positives. This comes at the cost of a slight reduction in total accuracy compared to the training. Adjusting the threshold to accomplish this results in a lower precision (0.95) and higher recall (0.99) for class 0. The resulting financial loss computed on out-of sample predictions over the entire dataset is $0.25 per record or approximately $40,000. Though we don’t know much else about this problem, this is presumably offset by some sort of gain for correct predictions. As shown in discussion of threshold in the neural network section above, the financial loss is relatively constant across most thresholds. Thus most of the gains have come from training the model to have accurate predictions. Tuning the threshold with these particular losses mostly serves to optimize as much as possible.</p>
-<p>The Neural Network outperformed the XGBoost model at reducing financial loss. The table below compares the performance of the two across a variety of metrics. The confusion matrix, ROC plot, and final classification report for the final classifier are also shown below.</p>
+<p>The Neural Network outperformed the XGBoost and Random Forest models at reducing financial loss. The table below compares the performance of the two across a variety of metrics. The confusion matrix, ROC plot, and final classification report for the final classifier are also shown below.</p>
 <div class="cell" data-execution_count="36">
 <div id="tbl-model-comparison" class="cell quarto-float anchored" data-execution_count="36">
 <figure class="quarto-float quarto-float-tbl figure">
