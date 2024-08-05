@@ -771,8 +771,7 @@ Markdown(metrics_md)
 
 ### XGBoost Classifier
 
-We also fit an XGBoost Clasifier.
-
+To provide another comparison model to Random Forest and Dense Network, we constructed a XG Boost mode. To create the best model, we used hyperparameter tuning paired with a Randomized CV with 5 folds.
 ```{python}
 #parameter grid
 param_grid = {
@@ -864,7 +863,7 @@ for train_index, val_index in kf.split(X):
     recall_list.append(recall_score(y_val, y_pred))
     f1_list.append(f1_score(y_val, y_pred))
 ```
-
+We plotted the metrics across its accuracy and f1 score as well showing the loss function for our train and validation. The average financial loss for this model is ________ per record. The other classification metrics are worse/better than the Dense Network and worse/better than the Random Forest model. 
 ```{python}
 # | output: true
 # | eval: true
